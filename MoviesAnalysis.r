@@ -1,215 +1,109 @@
-#https://github.com/maazh/IMDB-Movie-Dataset-Analysis/blob/master/tmdb-movies.csv
+# ============================= #
+##### Movies Gender Analysis ####
+# ============================= #
+# https://www.imdb.com/interfaces/
+# 
+# NOTE: This dataset is not up-to-date. The data seems to be reliable uo to
+# 2017, and the next dates are only the already claimed to be released movies.
+# 
+# title.basics.tsv.gz - Contains the following information for titles:
+#   - tconst (string) - alphanumeric unique identifier of the title
+#   - titleType (string) – the type/format of the title (e.g. movie, short, 
+#     tvseries, tvepisode, video, etc)
+#   - primaryTitle (string) – the more popular title / the title used by the 
+#     filmmakers on promotional materials at the point of release
+#   - originalTitle (string) - original title, in the original language
+#   - isAdult (boolean) - 0: non-adult title; 1: adult title
+#   - startYear (YYYY) – represents the release year of a title. In the case of 
+#     TV Series, it is the series start year
+#   - endYear (YYYY) – TV Series end year. ‘\N’ for all other title types
+#   - runtimeMinutes – primary runtime of the title, in minutes
+#   - genres (string array) – includes up to three genres associated with the title
+# title.principals.tsv.gz – Contains the principal cast/crew for titles
+#   - tconst (string) - alphanumeric unique identifier of the title
+#   - ordering (integer) – a number to uniquely identify rows for a given titleId
+#   - nconst (string) - alphanumeric unique identifier of the name/person
+#   - category (string) - the category of job that person was in
+#   - job (string) - the specific job title if applicable, else '\N'
+#   - characters (string) - the name of the character played if applicable, else '\N'
+# name.basics.tsv.gz – Contains the following information for names:
+#   - nconst (string) - alphanumeric unique identifier of the name/person
+#   - primaryName (string)– name by which the person is most often credited
+#   - birthYear – in YYYY format
+#   - deathYear – in YYYY format if applicable, else '\N'
+#   - primaryProfession (array of strings)– the top-3 professions of the person
+#   - knownForTitles (array of tconsts) – titles the person is known for
 
-library(data.table); library(rpart); library(bit64); library(httr); library(RCurl)
-library(jsonlite);  library(fasttime)
-library(knitr); library(rmarkdown); library(kableExtra)
-library(devtools)
-library(WikipediR)
-library(RCurl)
+# Analysis credits to Max Woolf
+# https://minimaxir.com/2018/07/imdb-data-analysis/
 
-#### 0. LOAD DATA ####
-# Define path
-setwd("~/Desktop/Kaggle/")
+# ---------------------- #
+#### 0. LOAD THE DATA ####
+# ---------------------- #
 
-# Load data
-#imdb <- fread("IMDB-Movie-Data.csv")
-babyNames <- fread("babynames-clean.csv")
-actorNames <- fread("ActorsNames.csv")
-imdb <- fread("movies.csv", fill = TRUE)
-# ------------------- #
+df_actors <- read_tsv("tmp/name.basics.tsv.gz", na = "\\N", quote = '') %>%
+  filter(str_detect(primaryProfession, "actor|actress"))  %>%
+  select(nconst, primaryName, birthYear)
 
+df_principals <- read_tsv("tmp/title.principals.tsv.gz", na = "\\N", quote = '') %>%
+  filter(str_detect(category, "actor|actress")) %>%
+  select(tconst, ordering, nconst, category) %>%
+  group_by(tconst) %>%
+  # Select only first actress/actor
+  filter(ordering == min(ordering))
 
-#### 1. PREPARE DATASET ####
-
-# Set names for data frame
-setnames(babyNames, c("Name", "Gender"))
-# Merge the files
-allNames <- rbind(babyNames, actorNames)
-
-# Rename columns with difficult names
-# imdb[, Revenue_millions := `Revenue (Millions)`]
-# imdb[, Runtime_minutes := `Runtime (Minutes)`]
-# imdb[, `Revenue (Millions)` := NULL]
-# imdb[, `Runtime (Minutes)` := NULL]
-
-# Substitute corrupted names of actors
-imdb$cast[[49]] <- "Jason Statham|Michael Angarano|Milo Ventimiglia|Dominik García-Lorido|Anne Heche"
-imdb$cast[[54]] <- "Jennifer Lawrence|Bradley Cooper|Robert De Niro|Dascha Polanco|Edgar Ramírez"
-imdb$cast[[55]] <- "Edgar Ramírez|Luke Bracey|Teresa Palmer|Delroy Lindo|Ray Winstone"
-imdb$cast[[124]] <- "Channing Tatum|Matt Bomer|Joe Manganiello|Kevin Nash|Adam Rodriguez"
-imdb$cast[[138]] <- "Reese Witherspoon|Sofía Vergara|Michael Mosley|John Carroll Lynch|Richard T. Jones"
-
-# Separate the actors
-singleActor <- strsplit(imdb$cast, "|", fixed = TRUE)
-
-# Assign new columns to data table corresponding to the first three actors names
-cols <- c("firstActor")
-idx <- 1
-
-for (actor in cols) {
-  # Separate first names to assign the gender
-  name <- paste0(actor, "Name")
-  imdb[, (actor) := trimws(sapply(singleActor, "[", idx), which = "left")]
-  # Take the first name only and add it to the data set
-  imdb[, (name)  := sapply(strsplit(imdb[[(actor)]], " "), "[[", 1)]
-  # Merge names and actors to categorize the gender of the actors
-  gender <- paste0(actor, "Gender")
-  imdb <- merge(allNames, imdb, by.x = "Name",  by.y = (name), all.y = T)
-  imdb[, (gender) := Gender]
-  # Remove useless columns
-  imdb[, `:=` (Name = NULL, Gender = NULL)]
-  
-  idx <- idx + 1
-}
-
-# Normalize the data
-imdbTotalMovies <- imdb[, .N, by = "Year"]
-imdbTotalMovies <- imdbTotalMovies[order(Year)]
-# Find ratios for girls and boys
-cols_gender <- c("firstActorGender", "secondActorGender", "thirdActorGender")
-imdbRatio <- data.table(Year = imdbTotalMovies$Year)
-
-for (gender in cols_gender) {
-  imdbGirls <- imdb[get(gender) == "girl", .N, by = "Year"]
-  imdbGirls <- imdbGirls[, (gender) := "girl"]
-  imdbGirls <- imdbGirls[order(Year)]
-
-  imdbBoys <- imdb[get(gender) == "boy", .N, by = "Year"]
-  imdbBoys <- imdbBoys[, (gender) := "boy"]
-  imdbBoys <- imdbBoys[order(Year)]
-
-  imdbRatioBoys <- imdbBoys[imdbTotalMovies, .(ratioBoys = N / i.N, Year), on = "Year"]
-  imdbRatioGirls <- imdbGirls[imdbTotalMovies, .(ratioGirls = N / i.N, Year), on = "Year"]
-
-  ratioBoysVar  <- paste0("ratioBoys_", sub("Gender", replacement = "", gender))
-  ratioGirlsVar <-paste0("ratioGirls_", sub("Gender", replacement = "", gender))
-  
-  imdbRatio[imdbRatioBoys, (ratioBoysVar) := ratioBoys, on = "Year"]
-  imdbRatio[imdbRatioGirls, (ratioGirlsVar) := i.ratioGirls, on = "Year"]
-}
-
-# Melting the data so it is possible to plot together
-imdbRatioMelt <- melt(imdbRatio, id.vars = 1)
-# ------------------------ #
+df_basics <- read_tsv("tmp/title.basics.tsv.gz", na = "\\N", quote = '',
+                      col_types = cols(col_character(),
+                                       col_character(),
+                                       col_character(),
+                                       col_character(),
+                                       col_logical(),
+                                       col_double(),
+                                       col_double(),
+                                       col_double(),
+                                       col_character())) %>%
+  select(tconst, primaryTitle, startYear, genres)
 
 
-#### 2. VISUALIZE THE DATA ####
+# ------------------------- #
+#### 1. JOIN THE DATASET ####
+# ------------------------- #
 
-# 2.1 Number of movies with boy vs girl actors aggregated
-barplot1 <- ggplot(data = imdb, aes(x = firstActorGender)) + 
-  geom_bar(aes(fill = firstActorGender), position = "dodge") + 
-  xlab("Gender of first Actor") + ylab("Count") +
-  ggtitle("First actors gender")
-
-# 2.2 Number of movies with boy vs girl actors during the years
-barplot1_2 <- ggplot(data = imdb, aes(x = factor(Year))) + 
-  geom_bar(aes(fill = firstActorGender), position = "dodge") + 
-  xlab("Year of production") + ylab("Count") +
-  ggtitle("First actors gender over the years")
-
-barplot2_2 <- ggplot(data = imdb, aes(x = factor(Year))) + 
-  geom_bar(aes(fill = secondActorGender), position = "dodge") + 
-  xlab("Year of production") + ylab("Count") +
-  ggtitle("Second actors gender over the years")
-
-barplot3_2 <- ggplot(data = imdb, aes(x = factor(Year))) + 
-  geom_bar(aes(fill = thirdActorGender), position = "dodge") + 
-  xlab("Year of production") + ylab("Count") +
-  ggtitle("Third actors gender over the years")
-
-# Put the plots together in one page
-gridExtra::grid.arrange(barplot1_2, barplot2_2, barplot3_2, nrow = 2)
-
-# 2.3 Number of movies with boy vs girl actors during the years normalized
-# on number of movies for that year
-barplot3 <- ggplot(data = imdbRatioMelt, aes(x = Year, y = value, 
-                                             colour = variable, 
-                                             group = variable)) + 
-  geom_smooth(aes(fill = variable)) +
-  xlab("Year of production") + ylab("Normalized Ratio") +
-  ggtitle("Normalized ratio of female vs male actors in role of first, second,
-          and third principal actor over the years")
-
-# It would be nice to have 3 different plots for the first, second and third actors
-my_formula <- y ~ x
-ggplot(data = imdbRatioMelt, aes(x = Year, y = value, 
-                             colour = variable, 
-                             group = variable)) + 
-  geom_smooth(method = "lm", aes(fill = variable), formula = my_formula) +
-  geom_point(aes(fill = variable)) +
-  xlab("Year of production") + ylab("Normalized Ratio")
+# Note: Using left_join, one does not need to specify the column on which to join
+# Joining name of actors/actress to movies where they are the leading characters
+df_principals <- df_principals %>% left_join(df_actors)
+# Joining name of leading characters with movie titles and year of release
+dt_basics <- as.data.table(df_basics %>% left_join(df_principals))
 
 
-# 2.3 Gender vs revenue
-boxplot <- ggplot(data = imdb[!is.na(Revenue_millions)], 
-                  aes(x = firstActorGender, y = Revenue_millions)) + geom_boxplot()
+# Quick check of how many movies do we have per year
+nMovies <- dt_basics[!is.na(startYear), .N, by = "startYear"]
+plot(nMovies$startYear, nMovies$N)
+abline(v = "2020")
+
+# Since the movies seems to be updated only up to 2017, we'll cut everything 
+# after that date
+dt_basics <- dt_basics[startYear <= "2017"]
 
 
-# ---------------------------------- #
+# ---------------------- #
+#### 2. PLOT THE DATA ####
+# ---------------------- #
+dt_actress <- dt_basics[category == "actress", .(nActress = .N), by = "startYear"]
+dt_actor <- dt_basics[category == "actor",   .(nActor = .N), by = "startYear"]
+dt_numbers <- merge(dt_actor, dt_actress, by = "startYear")
+dt_numbers <- dt_numbers[, total := nActress + nActor, by = "startYear"]
+dt_ratios <- dt_numbers[, .(ratioActress = nActress / total,
+                                 ratioActor = nActor / total,
+                            startYear)]
+dt_ratios <- melt(dt_ratios, id.vars = 3)
+
+ggplot(data = dt_ratios, aes(x = startYear, y = value, fill = variable, color = variable)) +
+  geom_line(aes(y = value))
 
 
-#### 3. STATISTICAL ANALYSIS ####
-
-# 3.1 Significance of the difference in numbers of movies with girls first actor 
-# and boys first actor
-dCohen_number <- (mean(imdbRatio$ratioBoys) - mean(imdbRatio$ratioGirls)) / 
-  sqrt(sd(imdbRatio$ratioGirls)^2 + sd(imdbRatio$ratioBoys)^2)
-# dCohen_number = 12.3214
-
-# 3.2 Significance of the difference in revenue between movies with girls first
-# actor and boys first actor
-dCohen_revenue <- (mean(imdb[firstActorGender == "boy" & !is.na(Revenue_millions), Revenue_millions]) - 
-                      mean(imdb[firstActorGender == "girl" & !is.na(Revenue_millions), Revenue_millions])) / 
-                  sqrt(sd(imdb[firstActorGender == "boy" & !is.na(Revenue_millions), Revenue_millions])^2 + 
-                         sd(imdb[firstActorGender == "girl" & !is.na(Revenue_millions), Revenue_millions])^2)
-# dCohen_revenue = 0.2676383
-# Classified as small (small = 0.2, medium = 0.5)
-
-# ----------------------------- #
-
-
-# Further ideas:
-# - Analyse gender distribution of the directors
-# - Genre vs gender
-# Need to separate the genre inputs (currently many)
-ggplot(data = imdb[Genre %like% "Romance"], aes(x = firstActorGender)) + 
-  geom_bar(aes(fill = firstActorGender))
-
-
-
-
-baseEndPoint <- "https://en.wikipedia.org/w/api.php?"
-action <- "action=query"
-origin <- "origin=*"
-format <- "format=json"
-generator <- "generator=search"
-#prop <- "prop=revisions"
-#title <- "title=Stanford%20University"
-space <- "gsrnamespace=0"
-limit <- "gsrlimit=5"
-search <- "gsrsearch='Lists_of_actors'"
-
-
-
-url <- paste0(baseEndPoint, 
-              paste(action, origin, format, generator, search, 
-                    sep = "&"))
-
-response <- GET(url = url)
-content <- content(response, as = "text", encoding = "utf-8")
-result <- fromJSON(content)
-
-wiki <- as.data.table(result)
-
-
-top_editors_page <- "http://en.wikipedia.org/wiki/Wikipedia:List_of_Wikipedians_by_number_of_edits"
-top_editors_table <- readHTMLTable(top_editors_page)
-very_top_editors <- as.character(top_editors_table[[3]][1:5,]$User)
-
-# setup connection to wikimedia project 
-con <- wiki_con("en", project = c("wikipedia"))
-
-# connect to API and get last 50 edits per user
-user_data <- lapply(very_top_editors,  function(i) wiki_usercontribs(con, i) )
-# and get information about the users (registration date, gender, editcount, etc)
-user_info <- lapply(very_top_editors,  function(i) wiki_userinfo(con, i) )
+# Why do we see difference with the other dataset?
+# We have high ranking movies which seem to be more skewed towards men.
+# A gender vs genres and gender vs budget analysis would be great
+# Doing it per genres seems easy
+# Budget is not in the data. Web-scraping of wiki pages?
