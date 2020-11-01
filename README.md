@@ -2,8 +2,8 @@
 
 https://www.imdb.com/interfaces/
  
-NOTE: This dataset is not up-to-date. The data seems to be reliable uo to
-2017, and the next dates are only the already claimed to be released movies.
+*NOTE: This dataset is not up-to-date. The data seems to be reliable up to
+2017, and the next dates are only the already claimed to be released movies.*
  
 #### title.basics.tsv.gz
 Contains the following information for titles:
