@@ -5,7 +5,8 @@ https://www.imdb.com/interfaces/
 NOTE: This dataset is not up-to-date. The data seems to be reliable uo to
 2017, and the next dates are only the already claimed to be released movies.
  
-#### title.basics.tsv.gz - Contains the following information for titles:
+#### title.basics.tsv.gz
+Contains the following information for titles:
    - tconst (string) - alphanumeric unique identifier of the title
    - titleType (string) – the type/format of the title (e.g. movie, short, 
      tvseries, tvepisode, video, etc)
@@ -18,14 +19,16 @@ NOTE: This dataset is not up-to-date. The data seems to be reliable uo to
    - endYear (YYYY) – TV Series end year. ‘\N’ for all other title types
    - runtimeMinutes – primary runtime of the title, in minutes
    - genres (string array) – includes up to three genres associated with the title
-#### title.principals.tsv.gz – Contains the principal cast/crew for titles
+#### title.principals.tsv.gz
+Contains the principal cast/crew for titles
    - tconst (string) - alphanumeric unique identifier of the title
    - ordering (integer) – a number to uniquely identify rows for a given titleId
    - nconst (string) - alphanumeric unique identifier of the name/person
    - category (string) - the category of job that person was in
    - job (string) - the specific job title if applicable, else '\N'
    - characters (string) - the name of the character played if applicable, else '\N'
-#### name.basics.tsv.gz – Contains the following information for names:
+#### name.basics.tsv.gz 
+Contains the following information for names:
    - nconst (string) - alphanumeric unique identifier of the name/person
    - primaryName (string)– name by which the person is most often credited
    - birthYear – in YYYY format
@@ -33,5 +36,6 @@ NOTE: This dataset is not up-to-date. The data seems to be reliable uo to
    - primaryProfession (array of strings)– the top-3 professions of the person
    - knownForTitles (array of tconsts) – titles the person is known for
 
-### Analysis credits to Max Woolf
+### Analysis credits
+Thanks to Max Woolf's blog for the very nice inputs!
 https://minimaxir.com/2018/07/imdb-data-analysis/
