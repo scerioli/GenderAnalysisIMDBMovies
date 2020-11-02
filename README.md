@@ -35,6 +35,11 @@ Contains the following information for names:
    - deathYear – in YYYY format if applicable, else '\N'
    - primaryProfession (array of strings)– the top-3 professions of the person
    - knownForTitles (array of tconsts) – titles the person is known for
+#### title.ratings.tsv.gz
+Contains the IMDb rating and votes information for titles
+   - tconst (string) - alphanumeric unique identifier of the title
+   - averageRating - weighted average of all individual ratings
+   - numVotes - number of votes the title has received
 
 ### Analysis credits
 Thanks to Max Woolf's blog for the very nice inputs!
