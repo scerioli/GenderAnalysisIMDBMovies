@@ -45,6 +45,16 @@
 #### 0. LOAD THE DATA ####
 # ---------------------- #
 
+### 0.1 Loading the libraries ####
+library(data.table); library(rpart); library(bit64); library(httr);
+library(fasttime); library(knitr); library(rmarkdown); library(kableExtra);
+library(stringi); library(caret); library(tidyverse); library(tibble);
+library(scales); library(dplyr); library(magrittr); library(readr);
+library(stringr)
+
+### 0.2 Loading the data ####
+setwd("~/Desktop/Kaggle/")
+
 df_actors <- read_tsv("files/name.basics.tsv.gz", na = "\\N", quote = '') %>%
   filter(str_detect(primaryProfession, "actor|actress"))  %>%
   select(nconst, primaryName, birthYear)
@@ -113,6 +123,24 @@ df_actors_ratings <- df_ratings_movies %>% group_by(startYear, category) %>%
 ### 1.5 Select only highly-rated movies ####
 df_best_movies <- dt_basics[averageRating >= 7.5 & titleType == "movie"]
 
+### 1.6 Select the genres of the movies
+dt_movies <- dt_basics[titleType == "movie" & !is.na(genres)]
+moviesGenres <- unique(unlist(strsplit(dt_movies$genres, ",")))
+numberPerGenres <- data.table()
+for (genre in moviesGenres) {
+  new <- data.table(numberOfActress = dt_movies[category == "actress" & genres %like% genre, .N],
+                    numberOfActors = dt_movies[category == "actor" & genres %like% genre, .N],
+                    genres = genre)
+  
+  numberPerGenres <- rbind(new, numberPerGenres)
+}
+
+melted <- melt(numberPerGenres, id.vars = 3)
+percentage <- melted[, sumAll := sum(value), by = "genres"]
+percentage[variable == "numberOfActress", ratioFemale := value / sumAll, by = "genres"]
+percentage[is.na(ratioFemale), ratioFemale := value / sumAll, by = "genres"]
+
+
 # ---------------------- #
 #### 2. PLOT THE DATA ####
 # ---------------------- #
@@ -137,6 +165,15 @@ ggplot(data = df_actors_ratings %>% filter(startYear >= 1920), aes(x = startYear
 ggplot(data = df_best_movies[startYear > 1950], aes(x = startYear, fill = category, color = category)) +
   stat_summary(aes(y = averageRating), fun = "mean", geom = "line") +
   stat_summary(aes(y = averageRating), fun.data = "mean_se", geom = "ribbon", alpha = 0.2, color = NA)
+
+### 2.5 Number of movies tagged with a certain genre, number of male first actor
+### vs female first actress
+ggplot(data = melted, aes(x = genres, y = value)) +
+  geom_col(aes(fill = factor(variable)), position = "dodge") 
+
+# Ratio of the same numbers
+ggplot(data = percentage, aes(x = genres, y = ratioFemale)) +
+  geom_col(aes(fill = factor(variable))) 
 
 
 # Why do we see difference with the other dataset?
